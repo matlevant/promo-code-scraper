@@ -142,8 +142,9 @@ def site_promo_pages(site: Site) -> list[str]:
     return [site.base_url.rstrip("/") + p for p in site.paths]
 
 
-def build_aggregators(brand: str) -> list[dict]:
+def build_aggregators(site: Site) -> list[dict]:
     """Aggregatori coupon. shop_pattern costruito dinamicamente dal brand."""
+    brand = site.brand
     b = re.escape(brand)
     brand_re = re.compile(b, re.I)
     return [
@@ -182,13 +183,58 @@ def build_aggregators(brand: str) -> list[dict]:
             "code_selectors": [".coupon-code", ".code", "strong", "code"],
             "data_attrs": ["data-code"],
         },
+        # --- internazionali, ampia copertura ---
+        {
+            "name": "CouponFollow",
+            "search": "https://couponfollow.com/site/{q}",
+            "query": site.domain,  # CouponFollow indicizza per dominio, non brand
+            "shop_pattern": re.compile(rf"/site/[a-z0-9.-]*{b}[a-z0-9.-]*", re.I),
+            "code_selectors": [".code", "[data-code]", "[data-clipboard-text]", "input.code"],
+            "data_attrs": ["data-code", "data-clipboard-text", "data-coupon"],
+        },
+        {
+            "name": "CouponBirds",
+            "search": "https://www.couponbirds.com/search?q={q}",
+            "shop_pattern": re.compile(rf"/codes/[a-z0-9-]*{b}[a-z0-9-]*", re.I),
+            "code_selectors": [".code", ".coupon-code", "[data-code]"],
+            "data_attrs": ["data-code", "data-clipboard-text"],
+        },
+        {
+            "name": "Wethrift",
+            "search": "https://www.wethrift.com/search?q={q}",
+            "shop_pattern": re.compile(rf"/[a-z0-9-]*{b}[a-z0-9-]*", re.I),
+            "code_selectors": [".coupon-code", ".code", "[data-code]", "code"],
+            "data_attrs": ["data-code", "data-clipboard-text"],
+        },
+        {
+            "name": "Knoji",
+            "search": "https://knoji.com/search/?query={q}",
+            "shop_pattern": re.compile(rf"/[a-z0-9-]*{b}[a-z0-9-]*-coupons?/?", re.I),
+            "code_selectors": [".coupon-code", ".code", "[data-clipboard-text]"],
+            "data_attrs": ["data-code", "data-clipboard-text"],
+        },
+        # --- IT ---
+        {
+            "name": "Discoup",
+            "search": "https://www.discoup.com/it/cerca?q={q}",
+            "shop_pattern": re.compile(rf"/it/[a-z0-9-]*{b}[a-z0-9-]*", re.I),
+            "code_selectors": [".coupon-code", ".code", "[data-code]", "strong"],
+            "data_attrs": ["data-code", "data-clipboard"],
+        },
+        {
+            "name": "Groupon-IT",
+            "search": "https://www.groupon.it/coupon-codes/{q}",
+            "shop_pattern": re.compile(rf"/coupon-codes/[a-z0-9-]*{b}[a-z0-9-]*", re.I),
+            "code_selectors": [".coupon-code", ".code", "[data-code]"],
+            "data_attrs": ["data-code", "data-clipboard-text"],
+        },
     ]
 
 
 def scrape_aggregator(client: httpx.Client, agg: dict, site: Site) -> set[str]:
     """Cerca shop su un aggregatore, segui primi match, estrai codici."""
     out: set[str] = set()
-    search_url = agg["search"].format(q=quote_plus(site.brand))
+    search_url = agg["search"].format(q=quote_plus(agg.get("query", site.brand)))
     print(f"  ? {agg['name']}: {search_url}")
     html = fetch(client, search_url)
     if not html:
@@ -333,7 +379,7 @@ def main() -> int:
             candidates |= extract_candidates(fetch(client, u), site)
 
         print("[4] Aggregatori coupon...")
-        for agg in build_aggregators(site.brand):
+        for agg in build_aggregators(site):
             try:
                 candidates |= scrape_aggregator(client, agg, site)
             except Exception as e:
